@@ -223,17 +223,48 @@ def plot_cases(results, output_path):
     fig, axes = plt.subplots(
         nrows=len(results),
         ncols=1,
-        sharex=True,
         squeeze=False,
         figsize=(12, 2.8 * len(results)))
     for ax, result in zip(axes[:, 0], results):
         times = result["times"]
-        ax.plot(times, result["true_eta"], label="true ETA", color="black", linewidth=1.5)
-        ax.plot(times, result["mean_eta"], label="unsmoothed mean", color="#1f77b4")
-        ax.plot(times, result["smooth_eta"], label="smoothed mean", color="#ff7f0e")
-        ax.plot(times, result["logcauchy_eta"], label="log-cauchy", color="#2ca02c")
+        marker_every = max(len(times) // 60, 1)
+        ax.plot(
+            times,
+            result["true_eta"],
+            label="true ETA",
+            color="black",
+            linewidth=1.7,
+            marker="o",
+            markersize=2.5,
+            markevery=marker_every)
+        ax.plot(
+            times,
+            result["mean_eta"],
+            label="unsmoothed mean",
+            color="#1f77b4",
+            marker="o",
+            markersize=2,
+            markevery=marker_every)
+        ax.plot(
+            times,
+            result["smooth_eta"],
+            label="smoothed mean",
+            color="#ff7f0e",
+            marker="o",
+            markersize=2,
+            markevery=marker_every)
+        ax.plot(
+            times,
+            result["logcauchy_eta"],
+            label="log-cauchy",
+            color="#2ca02c",
+            marker="o",
+            markersize=2,
+            markevery=marker_every)
         ax.set_title(result["name"].replace("_", " ").title())
         ax.set_ylabel("Remaining time (s)")
+        ax.set_yscale("symlog", linthresh=1.0)
+        ax.set_xlabel("Elapsed time (s)")
         ax.grid(alpha=0.2)
         ax_tasks = ax.twinx()
         ax_tasks.step(
@@ -250,7 +281,6 @@ def plot_cases(results, output_path):
             task_handles, task_labels = ax_tasks.get_legend_handles_labels()
             ax.legend(handles + task_handles, labels + task_labels,
                       loc="upper right", fontsize="small")
-    axes[-1, 0].set_xlabel("Elapsed time (s)")
     fig.tight_layout()
     fig.savefig(output_path, dpi=150)
 
