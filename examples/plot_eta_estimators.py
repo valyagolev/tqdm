@@ -232,7 +232,7 @@ def plot_cases(results, output_path):
         ax_tasks.set_ylabel("Tasks completed")
         ax_tasks.set_ylim(0, result["total"])
         handles, labels = ax.get_legend_handles_labels()
-        if ax is axes[0]:
+        if ax is axes[0, 0]:
             task_handles, task_labels = ax_tasks.get_legend_handles_labels()
             ax.legend(handles + task_handles, labels + task_labels,
                       loc="upper right", fontsize="small")
@@ -255,8 +255,7 @@ def main():
     rng = random.Random(args.seed)
     results = []
     for case_name in CASE_NAMES:
-        case_rng = random.Random(rng.getrandbits(32))
-        durations = simulate_case(case_name, case_rng, args.tasks)
+        durations = simulate_case(case_name, rng, args.tasks)
         series = run_simulation(durations, args.workers)
         series["name"] = case_name
         series["total"] = args.tasks
