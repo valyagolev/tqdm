@@ -1139,7 +1139,7 @@ def test_log_cauchy_eta_censoring():
         assert rate_late
         remaining_late = (t.total - t.n) / rate_late
         t.close()
-    assert remaining_late != remaining_early
+    assert remaining_late > remaining_early
 
 
 def test_unpause():

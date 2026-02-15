@@ -244,6 +244,9 @@ class EMA:
 
 class LogCauchyETA:
     """Log-Cauchy ETA estimator using MLE with right-censored observations."""
+    _INV_PI = 1 / math.pi
+    _LOG2 = math.log(2)
+
     def __init__(self, max_samples=1000, max_iter=12, learning_rate=0.35, min_scale=1e-3):
         self.max_samples = max_samples
         self.max_iter = max_iter
@@ -288,7 +291,7 @@ class LogCauchyETA:
 
     @staticmethod
     def _cdf(log_value, mu, sigma):
-        return 0.5 + math.atan((log_value - mu) / sigma) / math.pi
+        return 0.5 + math.atan((log_value - mu) / sigma) * LogCauchyETA._INV_PI
 
     @staticmethod
     def _inv_cdf(probability, mu, sigma):
@@ -327,11 +330,12 @@ class LogCauchyETA:
             if censored_count and censored_log is not None:
                 u_c = (censored_log - mu) / sigma
                 denom = 1 + u_c * u_c
-                survival = 0.5 - math.atan(u_c) / math.pi
+                survival = 0.5 - math.atan(u_c) * LogCauchyETA._INV_PI
                 if survival > 1e-12:
-                    scale = censored_count / (math.pi * denom * survival)
+                    denom_survival = denom * survival
+                    scale = censored_count * LogCauchyETA._INV_PI / denom_survival
                     grad_mu += scale / sigma
-                    grad_log_sigma += censored_count * (u_c / (math.pi * denom * survival))
+                    grad_log_sigma += censored_count * (u_c * LogCauchyETA._INV_PI / denom_survival)
             total_weight = self.sample_count + censored_count
             if total_weight:
                 grad_mu /= total_weight
@@ -352,7 +356,7 @@ class LogCauchyETA:
             return None
         mu, sigma = params
         cdf_censor = self._cdf(censored_log, mu, sigma)
-        tail_prob = 0.5 ** (1 / remaining)
+        tail_prob = math.exp(-LogCauchyETA._LOG2 / remaining)
         target = cdf_censor + (1 - cdf_censor) * tail_prob
         target = min(max(target, 1e-12), 1 - 1e-12)
         duration_log = self._inv_cdf(target, mu, sigma)
@@ -1601,7 +1605,7 @@ class tqdm(Comparable):
         rate = self._ema_dn() / self._ema_dt() if self._ema_dt() else None
         if self._eta_estimator and self.total and elapsed > 0:
             remaining = self._eta_estimator.estimate_remaining(self.total, self.n, elapsed)
-            if remaining:
+            if remaining is not None and remaining > 0:
                 rate = (self.total - self.n) / remaining
         return {
             'n': self.n, 'total': self.total,
