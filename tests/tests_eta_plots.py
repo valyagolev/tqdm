@@ -3,7 +3,7 @@ import math
 import random
 
 
-def test_simulation_returns_valid_structure():
+def test_simulation_returns_valid_results():
     for seed, case_name in enumerate(plot_module.CASE_NAMES, start=123):
         rng = random.Random(seed)
         durations = plot_module.simulate_case(case_name, rng, 30)

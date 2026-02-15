@@ -117,7 +117,7 @@ class LogCauchyCensoredEstimator(LogCauchyETA):
             return math.exp(mu)
         log_elapsed = math.log(elapsed)
         cdf_elapsed = self._cdf(log_elapsed, mu, sigma)
-        # Conditional median keeps half of the remaining probability mass above the elapsed time.
+        # Conditional median of the duration given survival past the elapsed time.
         target = 0.5 * (1 + cdf_elapsed)
         target = min(max(target, 1e-12), 1 - 1e-12)
         duration = math.exp(self._inv_cdf(target, mu, sigma))
@@ -189,8 +189,8 @@ def run_simulation(durations, workers, smoothing=0.3):
         ema_dn(dn)
         ema_dt(dt)
 
-        mean_rate = completed / elapsed if elapsed > 0 else None
         # mean_rate captures overall throughput across workers.
+        mean_rate = completed / elapsed if elapsed > 0 else None
         smooth_rate = ema_dn() / ema_dt() if ema_dt() else None
         remaining_tasks = total_tasks - completed
         running_elapsed = [current_time - start for _, start, _ in heap]
