@@ -49,7 +49,7 @@ def simulate_case(case_name, rng, total_tasks):
     if case_name == "lognormal_falling_mean":
         durations = []
         for i in range(total_tasks):
-            frac = i / max(total_tasks - 1, 1)
+            frac = 1.0 if total_tasks <= 1 else i / (total_tasks - 1)
             mu = 0.6 + (-0.2 - 0.6) * frac
             durations.append(sample_lognormal(rng, mu, 0.4))
         return durations
@@ -87,9 +87,9 @@ class LogCauchyCensoredEstimator(LogCauchyETA):
             for censored_log in censored_logs:
                 u_c = (censored_log - mu) / sigma
                 denom = 1 + u_c * u_c
-                survival = 0.5 - math.atan(u_c) * LogCauchyETA._INV_PI
-                if survival > 1e-12:
-                    denom_survival = denom * survival
+                survival_prob = 0.5 - math.atan(u_c) * LogCauchyETA._INV_PI
+                if survival_prob > 1e-12:
+                    denom_survival = denom * survival_prob
                     scale = LogCauchyETA._INV_PI / denom_survival
                     grad_mu += scale / sigma
                     grad_log_sigma += u_c * LogCauchyETA._INV_PI / denom_survival
@@ -110,7 +110,7 @@ class LogCauchyCensoredEstimator(LogCauchyETA):
             return math.exp(mu)
         log_elapsed = math.log(elapsed)
         cdf_elapsed = self._cdf(log_elapsed, mu, sigma)
-        # Conditional median keeps half of the remaining probability mass above elapsed.
+        # Conditional median keeps half of the remaining probability mass above the elapsed time.
         target = 0.5 * (1 + cdf_elapsed)
         target = min(max(target, 1e-12), 1 - 1e-12)
         duration = math.exp(self._inv_cdf(target, mu, sigma))
@@ -218,7 +218,7 @@ def plot_cases(results, output_path):
         ax.plot(times, result["mean_eta"], label="unsmoothed mean", color="#1f77b4")
         ax.plot(times, result["smooth_eta"], label="smoothed mean", color="#ff7f0e")
         ax.plot(times, result["logcauchy_eta"], label="log-cauchy", color="#2ca02c")
-        ax.set_title(result["name"].replace("_", " "))
+        ax.set_title(result["name"].replace("_", " ").title())
         ax.set_ylabel("Remaining time (s)")
         ax.grid(alpha=0.2)
         ax_tasks = ax.twinx()

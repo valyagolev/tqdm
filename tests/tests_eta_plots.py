@@ -1,17 +1,10 @@
 import importlib
 import math
-import os
 import random
-import sys
 
 
 def load_plot_module():
-    root = os.path.dirname(os.path.dirname(__file__))
-    sys.path.insert(0, root)
-    try:
-        return importlib.import_module("examples.plot_eta_estimators")
-    finally:
-        sys.path.pop(0)
+    return importlib.import_module("examples.plot_eta_estimators")
 
 
 def test_simulation_returns_valid_structure():
