@@ -110,6 +110,7 @@ class LogCauchyCensoredEstimator(LogCauchyETA):
             return math.exp(mu)
         log_elapsed = math.log(elapsed)
         cdf_elapsed = self._cdf(log_elapsed, mu, sigma)
+        # Conditional median keeps half of the remaining probability mass above elapsed.
         target = cdf_elapsed + 0.5 * (1 - cdf_elapsed)
         target = min(max(target, 1e-12), 1 - 1e-12)
         duration = math.exp(self._inv_cdf(target, mu, sigma))
@@ -133,6 +134,7 @@ class LogCauchyCensoredEstimator(LogCauchyETA):
 
 
 def run_simulation(durations, workers, smoothing=0.3):
+    """Simulate parallel task execution and estimate remaining time series."""
     total_tasks = len(durations)
     index = 0
     heap = []
@@ -201,6 +203,7 @@ def run_simulation(durations, workers, smoothing=0.3):
 
 
 def plot_cases(results, output_path):
+    """Plot ETA estimator series for a list of simulation result dictionaries."""
     import matplotlib.pyplot as plt
 
     fig, axes = plt.subplots(

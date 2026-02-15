@@ -13,7 +13,7 @@ def load_plot_module():
     return module
 
 
-def test_eta_plot_simulation_outputs():
+def test_simulation_returns_valid_structure():
     module = load_plot_module()
     rng = random.Random(123)
     durations = module.simulate_case("lognormal", rng, 30)
