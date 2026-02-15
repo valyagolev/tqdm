@@ -253,7 +253,7 @@ def main():
     rng = random.Random(args.seed)
     results = []
     for case_name in CASE_NAMES:
-        case_rng = random.Random(rng.randint(0, 2 ** 32 - 1))
+        case_rng = random.Random(rng.getrandbits(32))
         durations = simulate_case(case_name, case_rng, args.tasks)
         series = run_simulation(durations, args.workers)
         series["name"] = case_name
