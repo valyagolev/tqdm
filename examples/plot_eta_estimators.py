@@ -29,6 +29,8 @@ def sample_logcauchy(rng, mu, sigma):
 
 
 def simulate_case(case_name, rng, total_tasks):
+    if total_tasks <= 0:
+        return []
     if case_name == "lognormal":
         return [sample_lognormal(rng, 0.0, 0.6) for _ in range(total_tasks)]
     if case_name == "lognormal_outlier":
