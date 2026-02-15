@@ -1,16 +1,17 @@
-import importlib.util
+import importlib
 import math
 import os
 import random
+import sys
 
 
 def load_plot_module():
     root = os.path.dirname(os.path.dirname(__file__))
-    module_path = os.path.join(root, "examples", "plot_eta_estimators.py")
-    spec = importlib.util.spec_from_file_location("plot_eta_estimators", module_path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    sys.path.insert(0, root)
+    try:
+        return importlib.import_module("examples.plot_eta_estimators")
+    finally:
+        sys.path.pop(0)
 
 
 def test_simulation_returns_valid_structure():

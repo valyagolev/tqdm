@@ -65,7 +65,7 @@ def schedule_remaining(running_remaining, pending_durations, workers):
     for duration in pending_durations:
         start_time = heappop(availability)
         heappush(availability, start_time + duration)
-    return max(availability) if availability else 0.0
+    return max(availability)
 
 
 class LogCauchyCensoredEstimator(LogCauchyETA):
@@ -111,7 +111,7 @@ class LogCauchyCensoredEstimator(LogCauchyETA):
         log_elapsed = math.log(elapsed)
         cdf_elapsed = self._cdf(log_elapsed, mu, sigma)
         # Conditional median keeps half of the remaining probability mass above elapsed.
-        target = cdf_elapsed + 0.5 * (1 - cdf_elapsed)
+        target = 0.5 * (1 + cdf_elapsed)
         target = min(max(target, 1e-12), 1 - 1e-12)
         duration = math.exp(self._inv_cdf(target, mu, sigma))
         return max(0.0, duration - elapsed)
@@ -210,10 +210,9 @@ def plot_cases(results, output_path):
         nrows=len(results),
         ncols=1,
         sharex=True,
+        squeeze=False,
         figsize=(12, 2.8 * len(results)))
-    if len(results) == 1:
-        axes = [axes]
-    for ax, result in zip(axes, results):
+    for ax, result in zip(axes[:, 0], results):
         times = result["times"]
         ax.plot(times, result["true_eta"], label="true ETA", color="black", linewidth=1.5)
         ax.plot(times, result["mean_eta"], label="unsmoothed mean", color="#1f77b4")
@@ -237,7 +236,7 @@ def plot_cases(results, output_path):
             task_handles, task_labels = ax_tasks.get_legend_handles_labels()
             ax.legend(handles + task_handles, labels + task_labels,
                       loc="upper right", fontsize="small")
-    axes[-1].set_xlabel("Elapsed time (s)")
+    axes[-1, 0].set_xlabel("Elapsed time (s)")
     fig.tight_layout()
     fig.savefig(output_path, dpi=150)
 
