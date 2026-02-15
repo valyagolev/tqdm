@@ -36,7 +36,7 @@ def simulate_case(case_name, rng, total_tasks):
     if case_name == "lognormal_outlier":
         durations = [sample_lognormal(rng, 0.0, 0.6) for _ in range(total_tasks)]
         outlier_index = rng.randrange(total_tasks)
-        durations[outlier_index] = max(durations) * 25
+        durations[outlier_index] = max(max(durations), 1e-6) * 25
         return durations
     if case_name == "logcauchy":
         return [sample_logcauchy(rng, 0.0, 0.8) for _ in range(total_tasks)]
@@ -71,7 +71,11 @@ def estimate_parallel_completion_time(running_remaining, pending_durations, work
 
 
 class LogCauchyCensoredEstimator(LogCauchyETA):
-    """Log-Cauchy estimator that handles multiple right-censored workers."""
+    """Log-Cauchy estimator for multiple workers with right-censored durations.
+
+    In-progress workers contribute censored observations while
+    ``estimate_remaining_parallel`` returns an estimated completion time.
+    """
     def _estimate_params_multi(self, censored_logs):
         if self.sample_count < 2:
             return None
@@ -186,6 +190,7 @@ def run_simulation(durations, workers, smoothing=0.3):
         ema_dt(dt)
 
         mean_rate = completed / elapsed if elapsed > 0 else None
+        # mean_rate captures overall throughput across workers.
         smooth_rate = ema_dn() / ema_dt() if ema_dt() else None
         remaining_tasks = total_tasks - completed
         running_elapsed = [current_time - start for _, start, _ in heap]
