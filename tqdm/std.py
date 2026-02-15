@@ -7,8 +7,9 @@ Usage:
 >>> for i in trange(10):
 ...     ...
 """
+import math
 import sys
-from collections import OrderedDict, defaultdict
+from collections import OrderedDict, defaultdict, deque
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from numbers import Number
@@ -241,6 +242,124 @@ class EMA:
         return self.last / (1 - beta ** self.calls) if self.calls else self.last
 
 
+class LogCauchyETA:
+    """Log-Cauchy ETA estimator using MLE with right-censored observations."""
+    def __init__(self, max_samples=1000, max_iter=12, learning_rate=0.35, min_scale=1e-3):
+        self.max_samples = max_samples
+        self.max_iter = max_iter
+        self.learning_rate = learning_rate
+        self.min_scale = min_scale
+        self.samples = deque()
+        self.sample_count = 0
+        self.mu = None
+        self.log_sigma = None
+
+    def reset(self):
+        self.samples.clear()
+        self.sample_count = 0
+        self.mu = None
+        self.log_sigma = None
+
+    def add_completed(self, elapsed, count=1):
+        if elapsed <= 0 or count <= 0:
+            return
+        log_elapsed = math.log(elapsed)
+        if self.samples and self.samples[-1][0] == log_elapsed:
+            last_log, last_count = self.samples[-1]
+            self.samples[-1] = (last_log, last_count + count)
+            self.sample_count += count
+            return
+        if self.max_samples and len(self.samples) >= self.max_samples:
+            _, dropped = self.samples.popleft()
+            self.sample_count -= dropped
+        self.samples.append((log_elapsed, count))
+        self.sample_count += count
+
+    def _weighted_quantile(self, quantile):
+        if not self.sample_count:
+            return None
+        target = self.sample_count * quantile
+        cumulative = 0
+        for log_value, count in sorted(self.samples, key=lambda item: item[0]):
+            cumulative += count
+            if cumulative >= target:
+                return log_value
+        return self.samples[-1][0]
+
+    @staticmethod
+    def _cdf(log_value, mu, sigma):
+        return 0.5 + math.atan((log_value - mu) / sigma) / math.pi
+
+    @staticmethod
+    def _inv_cdf(probability, mu, sigma):
+        return mu + sigma * math.tan(math.pi * (probability - 0.5))
+
+    def _initial_params(self):
+        mu = self.mu
+        log_sigma = self.log_sigma
+        if mu is None:
+            mu = self._weighted_quantile(0.5)
+        if log_sigma is None:
+            q1 = self._weighted_quantile(0.25)
+            q3 = self._weighted_quantile(0.75)
+            if q1 is None or q3 is None or q3 <= q1:
+                sigma = 1.0
+            else:
+                sigma = max(self.min_scale, (q3 - q1) / 2)
+            log_sigma = math.log(max(self.min_scale, sigma))
+        return mu, log_sigma
+
+    def _estimate_params(self, censored_count, censored_log):
+        if self.sample_count < 2:
+            return None
+        mu, log_sigma = self._initial_params()
+        if mu is None or log_sigma is None:
+            return None
+        for _ in range(self.max_iter):
+            sigma = max(self.min_scale, math.exp(log_sigma))
+            grad_mu = 0.0
+            grad_log_sigma = 0.0
+            for log_value, count in self.samples:
+                u = (log_value - mu) / sigma
+                denom = 1 + u * u
+                grad_mu += count * (2 * u / (sigma * denom))
+                grad_log_sigma += count * ((u * u - 1) / denom)
+            if censored_count and censored_log is not None:
+                u_c = (censored_log - mu) / sigma
+                denom = 1 + u_c * u_c
+                survival = 0.5 - math.atan(u_c) / math.pi
+                if survival > 1e-12:
+                    scale = censored_count / (math.pi * denom * survival)
+                    grad_mu += scale / sigma
+                    grad_log_sigma += censored_count * (u_c / (math.pi * denom * survival))
+            total_weight = self.sample_count + censored_count
+            if total_weight:
+                grad_mu /= total_weight
+                grad_log_sigma /= total_weight
+            mu += self.learning_rate * grad_mu
+            log_sigma = max(math.log(self.min_scale), log_sigma + self.learning_rate * grad_log_sigma)
+        self.mu = mu
+        self.log_sigma = log_sigma
+        return mu, max(self.min_scale, math.exp(log_sigma))
+
+    def estimate_remaining(self, total, n, elapsed):
+        remaining = (total - n) if total is not None else 0
+        if remaining <= 0 or elapsed <= 0:
+            return 0
+        censored_log = math.log(elapsed)
+        params = self._estimate_params(remaining, censored_log)
+        if not params:
+            return None
+        mu, sigma = params
+        cdf_censor = self._cdf(censored_log, mu, sigma)
+        tail_prob = 0.5 ** (1 / remaining)
+        target = cdf_censor + (1 - cdf_censor) * tail_prob
+        target = min(max(target, 1e-12), 1 - 1e-12)
+        duration_log = self._inv_cdf(target, mu, sigma)
+        duration = math.exp(duration_log)
+        return max(0.0, duration - elapsed)
+
+
 class tqdm(Comparable):
     """
     Decorate an iterable object, returning an iterator which acts exactly
@@ -313,6 +432,10 @@ class tqdm(Comparable):
         Exponential moving average smoothing factor for speed estimates
         (ignored in GUI mode). Ranges from 0 (average speed) to 1
         (current/instantaneous speed) [default: 0.3].
+    eta  : str, optional
+        ETA estimation method. Set to "log_cauchy" to estimate remaining
+        time using a Log-Cauchy MLE with in-progress tasks treated as
+        right-censored observations [default: None].
     bar_format  : str, optional
         Specify a custom bar string formatting. May impact performance.
         [default: '{l_bar}{bar}{r_bar}'], where
@@ -954,7 +1077,7 @@ class tqdm(Comparable):
     def __init__(self, iterable=None, desc=None, total=None, leave=True, file=None,
                  ncols=None, mininterval=0.1, maxinterval=10.0, miniters=None,
                  ascii=None, disable=False, unit='it', unit_scale=False,
-                 dynamic_ncols=False, smoothing=0.3, bar_format=None, initial=0,
+                 dynamic_ncols=False, smoothing=0.3, eta=None, bar_format=None, initial=0,
                  position=None, postfix=None, unit_divisor=1000, write_bytes=False,
                  lock_args=None, nrows=None, colour=None, delay=0.0, gui=False,
                  **kwargs):
@@ -1045,6 +1168,23 @@ class tqdm(Comparable):
         if smoothing is None:
             smoothing = 0
 
+        if eta is not None:
+            if isinstance(eta, LogCauchyETA):
+                eta_estimator = eta
+                eta = "log_cauchy"
+            elif isinstance(eta, str):
+                eta_key = eta.lower()
+                if eta_key in ("log_cauchy", "log-cauchy", "logcauchy"):
+                    eta_estimator = LogCauchyETA()
+                    eta = "log_cauchy"
+                else:
+                    eta_estimator = None
+                    raise TqdmKeyError("Unknown ETA estimator: " + str(eta))
+            else:
+                raise TqdmKeyError("Unknown ETA estimator: " + str(eta))
+        else:
+            eta_estimator = None
+
         # Store the arguments
         self.iterable = iterable
         self.desc = desc or ''
@@ -1068,9 +1208,11 @@ class tqdm(Comparable):
         self.gui = gui
         self.dynamic_ncols = dynamic_ncols
         self.smoothing = smoothing
+        self.eta = eta
         self._ema_dn = EMA(smoothing)
         self._ema_dt = EMA(smoothing)
         self._ema_miniters = EMA(smoothing)
+        self._eta_estimator = eta_estimator
         self.bar_format = bar_format
         self.postfix = None
         self.colour = colour
@@ -1227,6 +1369,8 @@ class tqdm(Comparable):
         if n < 0:
             self.last_print_n += n  # for auto-refresh logic to work
         self.n += n
+        if self._eta_estimator and n > 0 and hasattr(self, 'start_t'):
+            self._eta_estimator.add_completed(self._time() - self.start_t, n)
 
         # check counter first to reduce calls to time()
         if self.n - self.last_print_n >= self.miniters:
@@ -1377,6 +1521,8 @@ class tqdm(Comparable):
         self._ema_dn = EMA(self.smoothing)
         self._ema_dt = EMA(self.smoothing)
         self._ema_miniters = EMA(self.smoothing)
+        if self._eta_estimator:
+            self._eta_estimator.reset()
         self.refresh()
 
     def set_description(self, desc=None, refresh=True):
@@ -1451,12 +1597,18 @@ class tqdm(Comparable):
                 'n': self.n, 'total': self.total, 'elapsed': 0, 'unit': 'it'})
         if self.dynamic_ncols:
             self.ncols, self.nrows = self.dynamic_ncols(self.fp)
+        elapsed = self._time() - self.start_t if hasattr(self, 'start_t') else 0
+        rate = self._ema_dn() / self._ema_dt() if self._ema_dt() else None
+        if self._eta_estimator and self.total and elapsed > 0:
+            remaining = self._eta_estimator.estimate_remaining(self.total, self.n, elapsed)
+            if remaining:
+                rate = (self.total - self.n) / remaining
         return {
             'n': self.n, 'total': self.total,
-            'elapsed': self._time() - self.start_t if hasattr(self, 'start_t') else 0,
+            'elapsed': elapsed,
             'ncols': self.ncols, 'nrows': self.nrows, 'prefix': self.desc,
             'ascii': self.ascii, 'unit': self.unit, 'unit_scale': self.unit_scale,
-            'rate': self._ema_dn() / self._ema_dt() if self._ema_dt() else None,
+            'rate': rate,
             'bar_format': self.bar_format, 'postfix': self.postfix,
             'unit_divisor': self.unit_divisor, 'initial': self.initial,
             'colour': self.colour}

@@ -1121,6 +1121,27 @@ def test_eta(capsys):
     assert f"\r100%|{dt.now():%Y-%m-%d}\n" in err
 
 
+def test_log_cauchy_eta_censoring():
+    """Test Log-Cauchy ETA estimator reacts to censored time."""
+    timer = DiscreteTimer()
+    with closing(StringIO()) as our_file:
+        t = tqdm(total=3, eta='log_cauchy', mininterval=0, file=our_file)
+        cpu_timify(t, timer)
+        timer.sleep(1)
+        t.update()
+        timer.sleep(1)
+        t.update()
+        rate_early = t.format_dict['rate']
+        assert rate_early
+        remaining_early = (t.total - t.n) / rate_early
+        timer.sleep(5)
+        rate_late = t.format_dict['rate']
+        assert rate_late
+        remaining_late = (t.total - t.n) / rate_late
+        t.close()
+    assert remaining_late != remaining_early
+
+
 def test_unpause():
     """Test unpause"""
     timer = DiscreteTimer()
