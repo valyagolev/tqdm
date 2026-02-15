@@ -56,7 +56,7 @@ def simulate_case(case_name, rng, total_tasks):
     raise ValueError(f"Unknown case: {case_name}")
 
 
-def schedule_remaining(running_remaining, pending_durations, workers):
+def estimate_parallel_completion_time(running_remaining, pending_durations, workers):
     if not running_remaining and not pending_durations:
         return 0.0
     availability = list(running_remaining)
@@ -69,6 +69,7 @@ def schedule_remaining(running_remaining, pending_durations, workers):
 
 
 class LogCauchyCensoredEstimator(LogCauchyETA):
+    """Log-Cauchy estimator that handles multiple right-censored workers."""
     def _estimate_params_multi(self, censored_logs):
         if self.sample_count < 2:
             return None
@@ -130,7 +131,10 @@ class LogCauchyCensoredEstimator(LogCauchyETA):
         pending_count = max(remaining_tasks - len(running_remaining), 0)
         median_duration = math.exp(mu)
         pending_durations = [median_duration] * pending_count
-        return schedule_remaining(running_remaining, pending_durations, workers)
+        return estimate_parallel_completion_time(
+            running_remaining,
+            pending_durations,
+            workers)
 
 
 def run_simulation(durations, workers, smoothing=0.3):
@@ -169,7 +173,10 @@ def run_simulation(durations, workers, smoothing=0.3):
 
         running_remaining = [end - current_time for end, _, _ in heap]
         pending_durations = durations[index:]
-        true_remaining = schedule_remaining(running_remaining, pending_durations, workers)
+        true_remaining = estimate_parallel_completion_time(
+            running_remaining,
+            pending_durations,
+            workers)
         elapsed = current_time
         dt = elapsed - last_time
         dn = len(finished)
